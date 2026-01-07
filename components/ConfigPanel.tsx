@@ -284,10 +284,10 @@ ${item.action_plan}`;
                 htmlFor="part1-basic-ux"
                 className="cursor-pointer text-xs font-medium leading-tight"
               >
-                PART 1. 기본 UX & 사용성
+                PART 1. 기본 UX & 휴리스틱 평가
               </Label>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                접근성, 플랫폼 표준, 시각적 위계
+                Nielsen 휴리스틱, Laws of UX, 접근성 통합 분석
               </p>
             </div>
           </div>
