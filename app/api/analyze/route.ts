@@ -230,12 +230,21 @@ ${selectedParts}
       analysisResult.feedback_list = analysisResult.feedback_list.map((item: any) => {
         if (item.coordinates) {
           const pixelCoords = item.coordinates;
-          item.coordinates = {
+          const percentCoords = {
             top: (pixelCoords.top / imgHeight) * 100,
             left: (pixelCoords.left / imgWidth) * 100,
             width: (pixelCoords.width / imgWidth) * 100,
             height: (pixelCoords.height / imgHeight) * 100,
           };
+          
+          // 디버깅 로그
+          console.log(`🎯 Coordinate Conversion [${item.title}]:`, {
+            imageSize: { width: imgWidth, height: imgHeight },
+            pixelCoords,
+            percentCoords,
+          });
+          
+          item.coordinates = percentCoords;
         }
         return item;
       });

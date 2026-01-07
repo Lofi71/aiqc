@@ -25,6 +25,24 @@ export function AnalysisOverlay({ imageRect }: AnalysisOverlayProps) {
   const actualWidth = (imageRect.width * width) / 100;
   const actualHeight = (imageRect.height * height) / 100;
 
+  // 디버깅 로그
+  console.log('🎯 Overlay Debug:', {
+    title: hoveredItem.title,
+    percentCoords: { top, left, width, height },
+    imageRect: {
+      top: imageRect.top,
+      left: imageRect.left,
+      width: imageRect.width,
+      height: imageRect.height,
+    },
+    actualCoords: {
+      top: actualTop,
+      left: actualLeft,
+      width: actualWidth,
+      height: actualHeight,
+    },
+  });
+
   return (
     <div
       className="absolute border-2 border-red-500 border-dashed bg-red-500/10 pointer-events-none transition-all duration-200 ease-in-out animate-pulse"
