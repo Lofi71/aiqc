@@ -1,17 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-function getOpenAIClient() {
+// Gemini 클라이언트 초기화
+function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
   
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.');
   }
   
-  return new OpenAI({
-    apiKey,
-    baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-  });
+  return new GoogleGenerativeAI(apiKey);
+}
+
+// Base64 이미지를 Gemini 형식으로 변환
+function base64ToGeminiPart(base64Image: string) {
+  // data:image/png;base64,... 형식에서 MIME 타입과 데이터 추출
+  const matches = base64Image.match(/^data:([^;]+);base64,(.+)$/);
+  if (!matches) {
+    throw new Error('잘못된 base64 이미지 형식입니다.');
+  }
+  
+  return {
+    inlineData: {
+      mimeType: matches[1],
+      data: matches[2],
+    },
+  };
 }
 
 const FEEDBACK_PART_DESCRIPTIONS = {
@@ -68,6 +82,241 @@ const FEEDBACK_PART_DESCRIPTIONS = {
   },
 };
 
+// 1차 API: Object Detection (좌표 추출 전용)
+async function detectObjects(
+  client: GoogleGenerativeAI,
+  imagePart: any,
+  imgWidth: number,
+  imgHeight: number
+) {
+  const model = client.getGenerativeModel({
+    model: 'gemini-2.0-flash-exp',
+  });
+
+  const objectDetectionPrompt = `
+당신은 UI/UX 디자인 이미지 분석 전문가입니다.
+
+**임무**: 이 디자인 이미지에서 문제가 있을 가능성이 높은 UI 요소들의 위치를 정확하게 감지하세요.
+
+**이미지 크기**: ${imgWidth}px × ${imgHeight}px
+
+**감지할 요소 예시**:
+- 작은 버튼이나 터치 영역
+- 대비가 낮은 텍스트
+- 정렬이 어긋난 요소
+- 크기가 일관되지 않은 요소
+- 그룹화가 명확하지 않은 섹션
+- 주요 정보 카드나 컨테이너
+
+**응답 형식 (JSON):**
+반드시 다음 형식으로만 응답하세요. 코드 펜싱은 절대 사용하지 마세요.
+
+{
+  "detected_elements": [
+    {
+      "label": "요소의 간단한 설명 (예: 상단 헤더 영역, 중앙 카드 섹션)",
+      "box_2d": [ymin, xmin, ymax, xmax]
+    }
+  ]
+}
+
+**좌표 형식**: [ymin, xmin, ymax, xmax] (0-1000 정규화 스케일)
+- ymin: 요소 상단의 Y 좌표 (0 = 이미지 맨 위, 1000 = 이미지 맨 아래)
+- xmin: 요소 왼쪽의 X 좌표 (0 = 이미지 맨 왼쪽, 1000 = 이미지 맨 오른쪽)
+- ymax: 요소 하단의 Y 좌표
+- xmax: 요소 오른쪽의 X 좌표
+
+**중요**: 
+- 최대 10개의 주요 UI 요소만 감지하세요
+- 정확한 경계 좌표를 제공하세요
+- JSON 형식만 반환하고, 다른 텍스트는 포함하지 마세요
+`;
+
+  const result = await model.generateContent({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: objectDetectionPrompt },
+          imagePart,
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.3, // 낮은 temperature로 일관성 향상
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json', // JSON 강제
+    },
+  });
+
+  const response = await result.response;
+  const text = response.text();
+  
+  console.log('🔍 Object Detection Raw Response:', text);
+  
+  // JSON 파싱
+  let jsonData;
+  try {
+    jsonData = JSON.parse(text);
+  } catch (e) {
+    // 코드 펜싱 제거 시도
+    const cleanText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    jsonData = JSON.parse(cleanText);
+  }
+
+  return jsonData.detected_elements || [];
+}
+
+// 2차 API: UX 분석 (1차에서 얻은 좌표 활용)
+async function analyzeUX(
+  client: GoogleGenerativeAI,
+  imagePart: any,
+  detectedElements: any[],
+  context: any,
+  imgWidth: number,
+  imgHeight: number
+) {
+  const { platform, serviceType, targetUser, pageGoal, currentStage, feedbackTypes } = context;
+  
+  // 선택된 피드백 파트 설명 생성
+  const selectedParts = feedbackTypes
+    .map((type: string) => {
+      const part = FEEDBACK_PART_DESCRIPTIONS[type as keyof typeof FEEDBACK_PART_DESCRIPTIONS];
+      return `🔎 ${part.title}\n${part.description}`;
+    })
+    .join('\n\n');
+
+  // 플랫폼별 피드백 룰
+  const platformRule = platform === 'mobile'
+    ? `**🚫 플랫폼 제한 규칙 (중요):**
+- 이 디자인은 **모바일 플랫폼 전용**입니다.
+- 모바일 환경에서만 발생하는 문제를 분석하세요.
+- 데스크톱 환경이나 반응형 웹 관련 피드백은 절대 하지 마세요.
+- 모바일 터치 인터랙션, 작은 화면 크기, iOS/Android 가이드라인에만 집중하세요.`
+    : `**🚫 플랫폼 제한 규칙 (중요):**
+- 이 디자인은 **데스크톱 플랫폼 전용**입니다.
+- 데스크톱 환경에서만 발생하는 문제를 분석하세요.
+- 모바일 환경이나 터치 인터랙션 관련 피드백은 절대 하지 마세요.
+- 마우스 호버, 큰 화면 크기, 웹 표준에만 집중하세요.`;
+
+  // 감지된 요소 목록 생성
+  const elementsList = detectedElements
+    .map((elem, idx) => `${idx + 1}. ${elem.label}: [${elem.box_2d.join(', ')}]`)
+    .join('\n');
+
+  const uxAnalysisPrompt = `
+당신은 10년 차 Senior UX 디자이너이자 사용자 경험 연구원(UX Researcher)입니다.
+
+닐슨의 사용성 휴리스틱(Nielsen's 10 Usability Heuristics), WCAG 2.2(접근성), 그리고 최신 모바일 UX 트렌드(HIG/Material Design)를 기준으로 엄격하고 통찰력 있는 피드백을 제공합니다.
+
+${platformRule}
+
+**📋 디자인 컨텍스트:**
+- 서비스 유형: ${serviceType}
+- 타겟 유저: 뷰티, 건기식 브랜드의 퍼포먼스 마케터 및 쇼핑몰 운영자
+- 현재 화면의 목표: ${pageGoal}
+- 타겟 플랫폼: ${platform === 'mobile' ? '모바일' : '데스크톱'}
+- 현재 단계: ${currentStage}
+
+**🔍 감지된 UI 요소 (0-1000 정규화 좌표):**
+${elementsList}
+
+**📐 이미지 크기**: ${imgWidth}px × ${imgHeight}px
+
+**🎯 분석 요청:**
+아래 관점으로 이미지를 분석하세요:
+
+${selectedParts}
+
+**응답 형식 (JSON):**
+반드시 다음 형식으로만 응답하세요. 코드 펜싱은 절대 사용하지 마세요.
+
+{
+  "score": 85,
+  "summary": "전체적인 평가 요약 (2-3문장)",
+  "feedback_list": [
+    {
+      "id": 1,
+      "type": "기본 UX & 사용성",
+      "severity": "High",
+      "title": "문제 제목",
+      "description": "문제의 원인과 사용자에게 미칠 심리적 영향",
+      "action_plan": "구체적인 수정 권고",
+      "box_2d": [ymin, xmin, ymax, xmax]
+    }
+  ]
+}
+
+**🚨 중요 규칙:**
+1. box_2d는 위의 감지된 요소 중 하나를 선택하거나, 직접 측정하세요
+2. box_2d 형식: [ymin, xmin, ymax, xmax] (0-1000 정규화 스케일)
+3. **title, description, action_plan에는 좌표 숫자를 절대 포함하지 마세요**
+4. 위치는 "상단 헤더", "화면 중앙" 같은 자연스러운 표현만 사용하세요
+5. JSON 형식만 반환하고, 다른 텍스트는 포함하지 마세요
+`;
+
+  const model = client.getGenerativeModel({
+    model: 'gemini-2.0-flash-exp',
+  });
+
+  const result = await model.generateContent({
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          { text: uxAnalysisPrompt },
+          imagePart,
+        ],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.5,
+      maxOutputTokens: 4096,
+      responseMimeType: 'application/json', // JSON 강제
+    },
+  });
+
+  const response = await result.response;
+  const text = response.text();
+  
+  console.log('📊 UX Analysis Raw Response:', text.substring(0, 500) + '...');
+  
+  // JSON 파싱
+  let jsonData;
+  try {
+    jsonData = JSON.parse(text);
+  } catch (e) {
+    // 코드 펜싱 제거 시도
+    const cleanText = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    jsonData = JSON.parse(cleanText);
+  }
+
+  return jsonData;
+}
+
+// 좌표 변환: 0-1000 스케일 → 픽셀 → 퍼센트
+function convertCoordinates(box2d: number[], imgWidth: number, imgHeight: number) {
+  const [ymin, xmin, ymax, xmax] = box2d;
+  
+  // 1. 0-1000 스케일을 픽셀로 변환
+  const pixelCoords = {
+    top: Math.round((ymin / 1000) * imgHeight),
+    left: Math.round((xmin / 1000) * imgWidth),
+    bottom: Math.round((ymax / 1000) * imgHeight),
+    right: Math.round((xmax / 1000) * imgWidth),
+  };
+  
+  // 2. 픽셀을 퍼센트로 변환
+  const percentCoords = {
+    top: (pixelCoords.top / imgHeight) * 100,
+    left: (pixelCoords.left / imgWidth) * 100,
+    width: ((pixelCoords.right - pixelCoords.left) / imgWidth) * 100,
+    height: ((pixelCoords.bottom - pixelCoords.top) / imgHeight) * 100,
+  };
+  
+  return { pixelCoords, percentCoords };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -80,203 +329,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { platform, serviceType, targetUser, pageGoal, currentStage, feedbackTypes } = context;
-    
-    // 이미지 크기 정보 (기본값: 1920x1080)
+    // 이미지 크기 정보
     const imgWidth = imageSize?.width || 1920;
     const imgHeight = imageSize?.height || 1080;
 
-    // 선택된 피드백 파트 설명 생성
-    const selectedParts = feedbackTypes
-      .map((type: string) => {
-        const part = FEEDBACK_PART_DESCRIPTIONS[type as keyof typeof FEEDBACK_PART_DESCRIPTIONS];
-        return `🔎 ${part.title}\n${part.description}`;
-      })
-      .join('\n\n');
+    console.log(`📏 Image Size: ${imgWidth}x${imgHeight}`);
 
-    // 플랫폼별 피드백 룰
-    const platformRule = platform === 'mobile'
-      ? `**🚫 플랫폼 제한 규칙 (중요):**
-- 이 디자인은 **모바일 플랫폼 전용**입니다.
-- 모바일 환경에서만 발생하는 문제를 분석하세요.
-- 데스크톱 환경이나 반응형 웹 관련 피드백은 절대 하지 마세요.
-- 모바일 터치 인터랙션, 작은 화면 크기, iOS/Android 가이드라인에만 집중하세요.`
-      : `**🚫 플랫폼 제한 규칙 (중요):**
-- 이 디자인은 **데스크톱 플랫폼 전용**입니다.
-- 데스크톱 환경에서만 발생하는 문제를 분석하세요.
-- 모바일 환경이나 터치 인터랙션 관련 피드백은 절대 하지 마세요.
-- 마우스 호버, 큰 화면 크기, 웹 표준에만 집중하세요.`;
+    // Gemini 클라이언트 초기화
+    const client = getGeminiClient();
+    const imagePart = base64ToGeminiPart(image);
 
-    // QC 마스터 프롬프트
-    const systemPrompt = `당신은 10년 차 Senior UX 디자이너이자 사용자 경험 연구원(UX Researcher)입니다.
+    // 🔍 1단계: Object Detection (좌표 추출)
+    console.log('🔍 Step 1: Object Detection...');
+    const detectedElements = await detectObjects(client, imagePart, imgWidth, imgHeight);
+    console.log(`✅ Detected ${detectedElements.length} elements`);
 
-닐슨의 사용성 휴리스틱(Nielsen's 10 Usability Heuristics), WCAG 2.2(접근성), 그리고 최신 모바일 UX 트렌드(HIG/Material Design)를 기준으로 엄격하고 통찰력 있는 피드백을 제공합니다.
+    // 📊 2단계: UX 분석 (1차 좌표 활용)
+    console.log('📊 Step 2: UX Analysis...');
+    const analysisResult = await analyzeUX(
+      client,
+      imagePart,
+      detectedElements,
+      context,
+      imgWidth,
+      imgHeight
+    );
+    console.log(`✅ Found ${analysisResult.feedback_list?.length || 0} issues`);
 
-단순한 칭찬보다는 개선이 필요한 취약점 위주로 분석하세요.
-
-${platformRule}
-
-**중요 지시사항:**
-1. 아래 디자인 컨텍스트를 완전히 숙지하고 분석하세요.
-2. 문제가 있는 영역의 **정확한 위치 좌표**를 반드시 포함하세요.
-
-**📐 좌표 측정 가이드 (매우 중요!):**
-- 이 이미지의 실제 크기는 **${imgWidth}px x ${imgHeight}px** 입니다
-- 좌표는 **픽셀(px) 단위**로 정확하게 측정하세요
-- 측정 방법:
-  1. **top**: 이미지 맨 위(0px)에서 요소의 상단까지의 픽셀 거리
-     예: 100px, 540px (이미지 중간), 900px 등
-  2. **left**: 이미지 맨 왼쪽(0px)에서 요소의 왼쪽까지의 픽셀 거리
-     예: 0px, ${Math.round(imgWidth / 2)}px (이미지 중앙), ${imgWidth}px 등
-  3. **width**: 요소가 차지하는 픽셀 너비
-     예: 버튼 = 200px, 카드 = 400px, 전체 폭 = ${imgWidth}px
-  4. **height**: 요소가 차지하는 픽셀 높이
-     예: 버튼 = 40px, 헤더 = 80px, 카드 = 200px
-
-**측정 예시 (${imgWidth}x${imgHeight} 이미지 기준):**
-- 상단 헤더: {top: 0, left: 0, width: ${imgWidth}, height: 80}
-- 중앙 버튼: {top: ${Math.round(imgHeight * 0.45)}, left: ${Math.round(imgWidth * 0.35)}, width: ${Math.round(imgWidth * 0.3)}, height: 50}
-- 카드 영역: {top: 100, left: 50, width: ${Math.round(imgWidth * 0.4)}, height: 250}
-
-**⚠️ 정확도 체크리스트:**
-- [ ] 요소의 실제 픽셀 위치를 정확히 측정했는가?
-- [ ] 크기가 실제 요소의 픽셀 크기와 일치하는가?
-- [ ] 좌표가 이미지 범위를 벗어나지 않는가? (0 ~ ${imgWidth}px, 0 ~ ${imgHeight}px)
-- [ ] 여러 요소가 있다면 각각 정확히 구분했는가?
-
-3. 응답은 반드시 아래의 JSON 형식으로만 제공하세요.
-
-**응답 형식 (픽셀 단위 좌표):**
-{
-  "score": 85,
-  "summary": "전체적인 평가 요약 (2-3문장)",
-  "feedback_list": [
-    {
-      "id": 1,
-      "type": "기본 UX & 사용성",
-      "severity": "High",
-      "title": "문제 제목",
-      "description": "문제의 원인과 사용자에게 미칠 심리적 영향을 포함한 전문가 코멘트",
-      "action_plan": "구체적인 수정 권고",
-      "coordinates": {
-        "top": 100,
-        "left": 200,
-        "width": 400,
-        "height": 80
-      }
-    }
-  ]
-}
-
-**🚨 중요 규칙:**
-1. coordinates는 반드시 픽셀(px) 단위의 정수로 제공하세요
-2. **좌표 정보를 title, description, action_plan에 절대 포함하지 마세요**
-3. 위치는 사람이 읽을 수 있는 자연스러운 표현으로만 설명하세요
-   - ✅ 좋은 예: "상단 헤더 영역", "화면 우측 하단 삭제 버튼"
-   - ❌ 나쁜 예: "(top: 225, left: 50, width: 320, height: 200)", "좌표 {top: 10, left: 20}"
-4. coordinates 필드는 별도로 JSON 구조에만 포함하세요`;
-
-    const userPrompt = `1️⃣ 디자인 컨텍스트 (필수 숙지)
-
-서비스 유형: ${serviceType}
-타겟 유저: ${targetUser}
-현재 화면의 목표(User Goal): ${pageGoal}
-타겟 플랫폼: ${platform === 'mobile' ? '모바일 (MOBILE ONLY - 데스크톱 피드백 금지)' : '데스크톱 (DESKTOP ONLY - 모바일 피드백 금지)'}
-현재 단계: ${currentStage}
-
-⚠️ 중요: 타겟 플랫폼은 ${platform}입니다. 
-${platform === 'mobile' 
-  ? '모바일 환경에서만 발생하는 문제만 피드백하세요. 데스크톱이나 반응형 관련 피드백은 하지 마세요.' 
-  : '데스크톱 환경에서만 발생하는 문제만 피드백하세요. 모바일이나 터치 관련 피드백은 하지 마세요.'}
-
-2️⃣ 세부 QA 수행 요청
-
-아래 관점으로 이미지를 분석하고 결과를 리포트하세요:
-
-${selectedParts}
-
-위 관점들을 바탕으로 디자인 시안의 문제점을 찾아내고, 각 문제 영역의 위치 좌표를 포함하여 JSON 형식으로 피드백을 제공해주세요.
-
-**📍 좌표 측정 시 주의사항 (이미지 크기: ${imgWidth}x${imgHeight}px):**
-1. 이미지를 천천히 관찰하면서 문제 요소의 정확한 픽셀 위치를 파악하세요
-2. **픽셀 단위**로 정확하게 측정하세요 (퍼센트 아님!)
-3. 요소의 경계를 정확하게 파악하여 width와 height를 픽셀로 측정하세요
-4. 좌표가 이미지 범위를 벗어나지 않도록 확인하세요 (0 ~ ${imgWidth}px, 0 ~ ${imgHeight}px)
-5. 작은 요소(버튼, 텍스트)도 실제 픽셀 크기로 정확하게 측정하세요
-
-각 피드백 항목은 다음 정보를 포함해야 합니다:
-- Issue ID (id)
-- 위치 좌표 (coordinates) - **픽셀 단위로 정확한 측정 필수!**
-- 문제 유형 (type)
-- 위험도 (severity: High / Medium / Low)
-- 전문가 코멘트 (description) - **좌표 숫자 포함 금지!**
-- 수정 권고 (action_plan) - **좌표 숫자 포함 금지!**
-
-**⚠️ 다시 한번 강조:**
-- 좌표 값(숫자)은 오직 coordinates 필드에만 포함하세요
-- title, description, action_plan에는 "상단 헤더", "화면 중앙 버튼" 같은 자연스러운 위치 표현만 사용하세요
-- 절대로 좌표 숫자를 텍스트에 포함하지 마세요`;
-
-    // Gemini API 호출
-    const openai = getOpenAIClient();
-    const response = await openai.chat.completions.create({
-      model: 'gemini-2.0-flash-exp',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: systemPrompt + '\n\n' + userPrompt,
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: image, // data:image/...;base64,... 형식
-              },
-            },
-          ],
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 4096,
-    });
-
-    const content = response.choices[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('AI 응답이 비어있습니다.');
-    }
-
-    // JSON 파싱 (마크다운 코드 블록 제거)
-    let jsonContent = content.trim();
-    if (jsonContent.startsWith('```json')) {
-      jsonContent = jsonContent.replace(/^```json\n/, '').replace(/\n```$/, '');
-    } else if (jsonContent.startsWith('```')) {
-      jsonContent = jsonContent.replace(/^```\n/, '').replace(/\n```$/, '');
-    }
-
-    const analysisResult = JSON.parse(jsonContent);
-
-    // 픽셀 좌표를 퍼센트로 변환
+    // 좌표 변환: box_2d (0-1000) → coordinates (퍼센트)
     if (analysisResult.feedback_list && Array.isArray(analysisResult.feedback_list)) {
       analysisResult.feedback_list = analysisResult.feedback_list.map((item: any) => {
-        if (item.coordinates) {
-          const pixelCoords = item.coordinates;
-          const percentCoords = {
-            top: (pixelCoords.top / imgHeight) * 100,
-            left: (pixelCoords.left / imgWidth) * 100,
-            width: (pixelCoords.width / imgWidth) * 100,
-            height: (pixelCoords.height / imgHeight) * 100,
-          };
+        if (item.box_2d && Array.isArray(item.box_2d)) {
+          const { pixelCoords, percentCoords } = convertCoordinates(
+            item.box_2d,
+            imgWidth,
+            imgHeight
+          );
           
-          // 디버깅 로그
           console.log(`🎯 Coordinate Conversion [${item.title}]:`, {
-            imageSize: { width: imgWidth, height: imgHeight },
+            box_2d: item.box_2d,
             pixelCoords,
             percentCoords,
           });
           
+          // box_2d 제거하고 coordinates로 교체
+          delete item.box_2d;
           item.coordinates = percentCoords;
         }
         return item;
@@ -286,31 +383,6 @@ ${selectedParts}
     return NextResponse.json(analysisResult);
   } catch (error) {
     console.error('Analysis error:', error);
-    
-    // Rate Limit 에러 처리
-    if (error && typeof error === 'object' && 'status' in error) {
-      const apiError = error as { status?: number; message?: string };
-      
-      if (apiError.status === 429) {
-        return NextResponse.json(
-          {
-            error: 'API 요청 한도 초과',
-            details: 'Gemini API의 요청 제한에 도달했습니다. 잠시 후 다시 시도해주세요. (무료 티어: 분당 15회 제한)',
-          },
-          { status: 429 }
-        );
-      }
-      
-      if (apiError.status === 401) {
-        return NextResponse.json(
-          {
-            error: 'API 키 오류',
-            details: 'Gemini API 키가 유효하지 않습니다. .env.local 파일의 GEMINI_API_KEY를 확인해주세요.',
-          },
-          { status: 401 }
-        );
-      }
-    }
     
     return NextResponse.json(
       {
