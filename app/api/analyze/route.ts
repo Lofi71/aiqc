@@ -168,7 +168,13 @@ ${platformRule}
   ]
 }
 
-**중요: coordinates는 반드시 픽셀(px) 단위의 정수로 제공하세요!**`;
+**🚨 중요 규칙:**
+1. coordinates는 반드시 픽셀(px) 단위의 정수로 제공하세요
+2. **좌표 정보를 title, description, action_plan에 절대 포함하지 마세요**
+3. 위치는 사람이 읽을 수 있는 자연스러운 표현으로만 설명하세요
+   - ✅ 좋은 예: "상단 헤더 영역", "화면 우측 하단 삭제 버튼"
+   - ❌ 나쁜 예: "(top: 225, left: 50, width: 320, height: 200)", "좌표 {top: 10, left: 20}"
+4. coordinates 필드는 별도로 JSON 구조에만 포함하세요`;
 
     const userPrompt = `1️⃣ 디자인 컨텍스트 (필수 숙지)
 
@@ -203,8 +209,13 @@ ${selectedParts}
 - 위치 좌표 (coordinates) - **픽셀 단위로 정확한 측정 필수!**
 - 문제 유형 (type)
 - 위험도 (severity: High / Medium / Low)
-- 전문가 코멘트 (description)
-- 수정 권고 (action_plan)`;
+- 전문가 코멘트 (description) - **좌표 숫자 포함 금지!**
+- 수정 권고 (action_plan) - **좌표 숫자 포함 금지!**
+
+**⚠️ 다시 한번 강조:**
+- 좌표 값(숫자)은 오직 coordinates 필드에만 포함하세요
+- title, description, action_plan에는 "상단 헤더", "화면 중앙 버튼" 같은 자연스러운 위치 표현만 사용하세요
+- 절대로 좌표 숫자를 텍스트에 포함하지 마세요`;
 
     // Gemini API 호출
     const openai = getOpenAIClient();
