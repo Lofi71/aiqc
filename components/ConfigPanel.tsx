@@ -110,7 +110,6 @@ ${item.action_plan}`;
     !isAnalyzing && 
     designContext.feedbackTypes.length > 0 &&
     designContext.serviceType.trim() !== '' &&
-    designContext.targetUser.trim() !== '' &&
     designContext.pageGoal.trim() !== '';
 
   // 분석 결과가 있으면 결과만 표시
@@ -226,29 +225,16 @@ ${item.action_plan}`;
         </Tabs>
       </div>
 
-      {/* 서비스 유형 */}
+      {/* 서비스 요약 */}
       <div className="space-y-2">
         <Label htmlFor="serviceType" className="text-sm font-semibold">
-          서비스 유형
+          서비스 요약
         </Label>
         <Input
           id="serviceType"
-          placeholder="예: 이커머스, SNS, 뉴스 등"
+          placeholder="예: 퍼포먼스 마케팅 데이터 분석 툴, 소재 유형 분류 툴 등"
           value={designContext.serviceType}
           onChange={(e) => setDesignContext({ serviceType: e.target.value })}
-        />
-      </div>
-
-      {/* 타겟 유저 */}
-      <div className="space-y-2">
-        <Label htmlFor="targetUser" className="text-sm font-semibold">
-          타겟 유저
-        </Label>
-        <Input
-          id="targetUser"
-          placeholder="예: 20-30대 여성, 시니어 등"
-          value={designContext.targetUser}
-          onChange={(e) => setDesignContext({ targetUser: e.target.value })}
         />
       </div>
 
