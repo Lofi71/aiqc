@@ -12,12 +12,15 @@ const initialDesignContext: DesignContext = {
 
 export const useAppStore = create<AppState>((set) => ({
   uploadedImage: null,
+  imageSize: null,
   analysisResult: null,
   hoveredItemId: null,
   isAnalyzing: false,
   designContext: initialDesignContext,
 
   setUploadedImage: (image) => set({ uploadedImage: image }),
+  
+  setImageSize: (size) => set({ imageSize: size }),
   
   setAnalysisResult: (result) => set({ analysisResult: result }),
   
@@ -33,6 +36,7 @@ export const useAppStore = create<AppState>((set) => ({
   reset: () =>
     set({
       uploadedImage: null,
+      imageSize: null,
       analysisResult: null,
       hoveredItemId: null,
       isAnalyzing: false,

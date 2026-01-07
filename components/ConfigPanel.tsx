@@ -23,7 +23,8 @@ export function ConfigPanel() {
   const { 
     designContext, 
     setDesignContext, 
-    uploadedImage, 
+    uploadedImage,
+    imageSize,
     isAnalyzing,
     setIsAnalyzing,
     setAnalysisResult,
@@ -46,6 +47,7 @@ export function ConfigPanel() {
         },
         body: JSON.stringify({
           image: uploadedImage,
+          imageSize: imageSize,
           context: designContext,
         }),
       });

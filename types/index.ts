@@ -31,6 +31,11 @@ export interface AnalysisResult {
   feedback_list: FeedbackItem[];
 }
 
+export interface ImageSize {
+  width: number;
+  height: number;
+}
+
 export interface DesignContext {
   platform: Platform;
   serviceType: string;
@@ -42,12 +47,14 @@ export interface DesignContext {
 
 export interface AppState {
   uploadedImage: string | null;
+  imageSize: ImageSize | null;
   analysisResult: AnalysisResult | null;
   hoveredItemId: number | null;
   isAnalyzing: boolean;
   designContext: DesignContext;
   
   setUploadedImage: (image: string | null) => void;
+  setImageSize: (size: ImageSize | null) => void;
   setAnalysisResult: (result: AnalysisResult | null) => void;
   setHoveredItemId: (id: number | null) => void;
   setIsAnalyzing: (isAnalyzing: boolean) => void;

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { AnalysisOverlay } from './AnalysisOverlay';
 
 export function ImageUploader() {
-  const { uploadedImage, setUploadedImage, reset } = useAppStore();
+  const { uploadedImage, setUploadedImage, setImageSize, reset } = useAppStore();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [imageRect, setImageRect] = useState<DOMRect | null>(null);
@@ -28,10 +28,20 @@ export function ImageUploader() {
       reader.onload = (e) => {
         const result = e.target?.result as string;
         setUploadedImage(result);
+        
+        // 이미지 크기 추출
+        const img = new Image();
+        img.onload = () => {
+          setImageSize({
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+          });
+        };
+        img.src = result;
       };
       reader.readAsDataURL(file);
     },
-    [setUploadedImage]
+    [setUploadedImage, setImageSize]
   );
 
   const handleDrop = useCallback(
