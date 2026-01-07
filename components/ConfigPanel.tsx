@@ -215,11 +215,11 @@ ${item.action_plan}`;
           }
         >
           <TabsList className="w-full">
+            <TabsTrigger value="desktop" className="flex-1">
+              데스크톱
+            </TabsTrigger>
             <TabsTrigger value="mobile" className="flex-1">
               모바일
-            </TabsTrigger>
-            <TabsTrigger value="desktop" className="flex-1">
-              데스크탑
             </TabsTrigger>
           </TabsList>
         </Tabs>
