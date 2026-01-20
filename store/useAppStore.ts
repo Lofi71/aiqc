@@ -15,32 +15,59 @@ export const useAppStore = create<AppState>((set) => ({
   imageSize: null,
   analysisResult: null,
   hoveredItemId: null,
+  selectedItemId: null,
   isAnalyzing: false,
+  analysisStep: 'idle',
   designContext: initialDesignContext,
+  referenceImages: [],
 
   setUploadedImage: (image) => set({ uploadedImage: image }),
-  
+
   setImageSize: (size) => set({ imageSize: size }),
-  
+
   setAnalysisResult: (result) => set({ analysisResult: result }),
-  
+
   setHoveredItemId: (id) => set({ hoveredItemId: id }),
-  
+
+  setSelectedItemId: (id) => set({ selectedItemId: id }),
+
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
-  
+
+  setAnalysisStep: (step) => set({ analysisStep: step }),
+
   setDesignContext: (context) =>
     set((state) => ({
       designContext: { ...state.designContext, ...context },
     })),
-  
+
+  setReferenceImages: (images) => set({ referenceImages: images }),
+
+  addReferenceImage: (image) =>
+    set((state) => ({ referenceImages: [...state.referenceImages, image] })),
+
+  removeReferenceImage: (id) =>
+    set((state) => ({
+      referenceImages: state.referenceImages.filter((img) => img.id !== id),
+    })),
+
+  updateReferenceImageType: (id, type) =>
+    set((state) => ({
+      referenceImages: state.referenceImages.map((img) =>
+        img.id === id ? { ...img, type } : img
+      ),
+    })),
+
   reset: () =>
     set({
       uploadedImage: null,
       imageSize: null,
       analysisResult: null,
       hoveredItemId: null,
+      selectedItemId: null,
       isAnalyzing: false,
+      analysisStep: 'idle',
       designContext: initialDesignContext,
+      referenceImages: [],
     }),
 }));
 

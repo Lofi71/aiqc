@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AnalysisOverlay } from './AnalysisOverlay';
+import ReferenceImageUploader from './ReferenceImageUploader';
 
 export function ImageUploader() {
   const { uploadedImage, setUploadedImage, setImageSize, reset } = useAppStore();
@@ -28,7 +29,7 @@ export function ImageUploader() {
       reader.onload = (e) => {
         const result = e.target?.result as string;
         setUploadedImage(result);
-        
+
         // 이미지 크기 추출
         const img = new Image();
         img.onload = () => {
@@ -90,14 +91,14 @@ export function ImageUploader() {
       if (imageRef.current && containerRef.current) {
         const img = imageRef.current;
         const container = containerRef.current;
-        
+
         // 이미지의 실제 렌더링 크기 계산
         const containerRect = container.getBoundingClientRect();
         const imgNaturalRatio = img.naturalWidth / img.naturalHeight;
         const containerRatio = containerRect.width / containerRect.height;
-        
+
         let renderedWidth, renderedHeight, offsetX, offsetY;
-        
+
         if (imgNaturalRatio > containerRatio) {
           // 이미지가 컨테이너보다 가로로 더 긴 경우
           renderedWidth = containerRect.width;
@@ -111,7 +112,7 @@ export function ImageUploader() {
           offsetX = (containerRect.width - renderedWidth) / 2;
           offsetY = 0;
         }
-        
+
         setImageRect(new DOMRect(offsetX, offsetY, renderedWidth, renderedHeight));
       }
     };
@@ -131,15 +132,14 @@ export function ImageUploader() {
   }, [uploadedImage]);
 
   return (
-    <>
-      <div ref={containerRef} className="relative w-full h-full">
+    <div className="w-full h-full flex flex-col">
+      <div ref={containerRef} className="relative w-full flex-1 min-h-0">
         {!uploadedImage ? (
           <div
-            className={`w-full h-full flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
-              isDragging
-                ? 'border-primary bg-primary/5'
-                : 'border-muted-foreground/25 hover:border-primary/50'
-            }`}
+            className={`w-full h-full flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer transition-colors ${isDragging
+              ? 'border-primary bg-primary/5'
+              : 'border-muted-foreground/25 hover:border-primary/50'
+              }`}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -172,6 +172,8 @@ export function ImageUploader() {
         )}
       </div>
 
+      <ReferenceImageUploader />
+
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
@@ -190,6 +192,6 @@ export function ImageUploader() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }

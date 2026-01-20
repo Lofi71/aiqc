@@ -20,9 +20,9 @@ const SEVERITY_COLORS: Record<Severity, string> = {
 };
 
 export function ConfigPanel() {
-  const { 
-    designContext, 
-    setDesignContext, 
+  const {
+    designContext,
+    setDesignContext,
     uploadedImage,
     imageSize,
     isAnalyzing,
@@ -30,6 +30,8 @@ export function ConfigPanel() {
     setAnalysisResult,
     analysisResult,
     setHoveredItemId,
+    analysisStep,
+    setAnalysisStep,
   } = useAppStore();
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -38,32 +40,55 @@ export function ConfigPanel() {
     if (!uploadedImage) return;
 
     setIsAnalyzing(true);
+    setAnalysisStep('detecting');
 
     try {
-      const response = await fetch('/api/analyze', {
+      // 1단계: Object Detection (요소 감지)
+      const detectResponse = await fetch('/api/detect', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: uploadedImage,
+          imageSize: imageSize,
+        }),
+      });
+
+      const detectResult = await detectResponse.json();
+
+      if (!detectResponse.ok) {
+        throw new Error(detectResult.details || detectResult.error || '요소 감지 실패');
+      }
+
+      setAnalysisStep('analyzing');
+
+      // 2단계: UX Audit (스트리밍 분석)
+      const auditResponse = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           image: uploadedImage,
           imageSize: imageSize,
           context: designContext,
+          detectedElements: detectResult.detectedElements,
+          referenceImages: useAppStore.getState().referenceImages,
         }),
       });
 
-      const result = await response.json();
-      
-      if (!response.ok) {
-        const errorMessage = result.details || result.error || '분석 요청에 실패했습니다.';
-        throw new Error(errorMessage);
+      if (!auditResponse.ok) {
+        const errorData = await auditResponse.json();
+        throw new Error(errorData.details || errorData.error || '분석 실패');
       }
 
-      setAnalysisResult(result);
+      // JSON 응답 처리
+      const auditResult = await auditResponse.json();
+      setAnalysisResult(auditResult);
+
+      setAnalysisStep('complete');
     } catch (error) {
       console.error('Analysis error:', error);
+      setAnalysisStep('error');
       const errorMessage = error instanceof Error ? error.message : '분석 중 오류가 발생했습니다.';
-      
+
       if (errorMessage.includes('429') || errorMessage.includes('한도')) {
         alert('⏱️ API 요청 제한\n\nGemini API의 요청 한도에 도달했습니다.\n잠시 후(약 1분) 다시 시도해주세요.\n\n💡 무료 티어는 분당 15회로 제한됩니다.');
       } else if (errorMessage.includes('401') || errorMessage.includes('API 키')) {
@@ -81,7 +106,7 @@ export function ConfigPanel() {
     const newTypes = checked
       ? [...currentTypes, type]
       : currentTypes.filter((t) => t !== type);
-    
+
     setDesignContext({ feedbackTypes: newTypes });
   };
 
@@ -107,9 +132,9 @@ ${item.action_plan}`;
     }
   };
 
-  const isFormValid = 
-    uploadedImage && 
-    !isAnalyzing && 
+  const isFormValid =
+    uploadedImage &&
+    !isAnalyzing &&
     designContext.feedbackTypes.length > 0 &&
     designContext.serviceType.trim() !== '' &&
     designContext.pageGoal.trim() !== '';
@@ -167,7 +192,7 @@ ${item.action_plan}`;
                     {item.action_plan}
                   </p>
                 </div>
-                
+
                 {/* 복사 버튼 */}
                 <div className="pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Button
@@ -331,26 +356,7 @@ ${item.action_plan}`;
               </p>
             </div>
           </div>
-          <div className="flex items-start space-x-2">
-            <Checkbox
-              id="part4-designer-judgment"
-              checked={designContext.feedbackTypes.includes('part4-designer-judgment')}
-              onCheckedChange={(checked) =>
-                handleFeedbackTypeChange('part4-designer-judgment', checked as boolean)
-              }
-            />
-            <div className="flex-1">
-              <Label
-                htmlFor="part4-designer-judgment"
-                className="cursor-pointer text-xs font-medium leading-tight"
-              >
-                PART 4. 디자이너 판단
-              </Label>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                필수 수정 vs 유지/논의 구분
-              </p>
-            </div>
-          </div>
+          {/* Part 4 removed */}
         </div>
       </div>
 
@@ -362,15 +368,17 @@ ${item.action_plan}`;
         disabled={!isFormValid}
       >
         {isAnalyzing ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            분석 중...
-          </>
+          <div className="flex items-center justify-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>
+              {analysisStep === 'detecting' ? '화면 요소 스캔 중...' : 'UX 전문가 분석 중...'}
+            </span>
+          </div>
         ) : (
           'AI 분석 시작'
         )}
       </Button>
-      
+
       {!isFormValid && uploadedImage && (
         <p className="text-xs text-destructive text-center">
           모든 필수 항목을 입력하고 최소 1개의 분석 파트를 선택하세요.
