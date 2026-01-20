@@ -99,11 +99,11 @@ export function AnalysisOverlay({ imageRect }: AnalysisOverlayProps) {
             <CardContent className="p-3 pt-0 space-y-2">
               <div>
                 <p className="text-xs font-semibold mb-0.5">문제점</p>
-                <p className="text-xs text-muted-foreground">{activeItem.description.replace(/(\[?\(?\s*\d{2,4}\s*,\s*\d{2,4}\s*(?:,\s*\d{2,4}\s*)*\)?\]?)|(x:\s*\d+)/gi, '').trim()}</p>
+                <p className="text-xs text-muted-foreground">{activeItem.description.replace(/(\(?\[?\s*\d{2,4}\s*,\s*\d{2,4}\s*(?:,\s*\d{2,4})*\s*\]?\)?)|(\(x:\s*\d+\))|(x:\s*\d+)/gi, '').trim()}</p>
               </div>
               <div className="bg-muted/50 p-2 rounded">
                 <p className="text-xs font-semibold mb-0.5">💡 개선 방안</p>
-                <p className="text-xs text-muted-foreground">{activeItem.action_plan.replace(/(\[?\(?\s*\d{2,4}\s*,\s*\d{2,4}\s*(?:,\s*\d{2,4}\s*)*\)?\]?)|(x:\s*\d+)/gi, '').trim()}</p>
+                <p className="text-xs text-muted-foreground">{activeItem.action_plan.replace(/(\(?\[?\s*\d{2,4}\s*,\s*\d{2,4}\s*(?:,\s*\d{2,4})*\s*\]?\)?)|(\(x:\s*\d+\))|(x:\s*\d+)/gi, '').trim()}</p>
               </div>
             </CardContent>
           </Card>
