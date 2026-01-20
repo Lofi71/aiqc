@@ -321,7 +321,9 @@ ${selectedPartsContext}
 3. **Fact-Check (Spatial)**: 요소의 위치(상단/하단/좌측/우측)를 지적할 때는 반드시 **Detected Elements의 box_2d 좌표**를 확인하세요.
    - ymin < 100 (상단), ymin > 800 (하단) 등 좌표 기반으로 사실 관계가 맞을 때만 지적하세요. (잘못된 위치 지적은 절대 금지)
 4. **Actionable**: 구체적인 변경 수치를 제안하세요.
-5. **NO COORDINATES IN TEXT**: title, description, action_plan에 좌표 숫자를 절대 포함하지 마세요. 텍스트로 풀어 쓰세요.
+5. **No Raw Coordinates**: title, description, action_plan에 좌표 숫자(예: [100, 200], x:100)를 절대 적지 마세요.
+   - **Bad**: "버튼이 [850, 900]에 위치하여..."
+   - **Good**: "버튼이 **화면 최하단 우측**에 위치하여..." (좌표를 사람이 이해하는 위치 언어로 번역하세요)
 6. **No Halucination**: 없는 요소를 지적하지 마세요.
 7. **Coordinates**: box_2d는 [ymin, xmin, ymax, xmax] (0-1000 Scale)입니다.
 `;
