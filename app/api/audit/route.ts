@@ -36,6 +36,18 @@ const PLATFORM_RULES = {
 - **Space Utilization**: 넓은 화면을 효율적으로 사용하고 있는지(지나친 여백이나 빽빽함) 확인하세요.`,
 };
 
+
+// CORS Headers for Figma Plugin
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+    return NextResponse.json({}, { headers: corsHeaders });
+}
+
 // 전략적 판단 및 피드백 품질 룰셋 (Global Strategic Mindset)
 const GLOBAL_STRATEGIC_MINDSET = `
 ## 전략적 사고 및 피드백 원칙 (Global Strategic Mindset)
@@ -424,7 +436,7 @@ export async function POST(request: NextRequest) {
 
         console.log(`✅ Analysis complete. Found ${analysisResult.feedback_list?.length || 0} issues`);
 
-        return NextResponse.json(analysisResult);
+        return NextResponse.json(analysisResult, { headers: corsHeaders });
 
     } catch (error) {
         console.error('Analysis error:', error);
@@ -434,7 +446,7 @@ export async function POST(request: NextRequest) {
                 error: '분석 중 오류가 발생했습니다.',
                 details: error instanceof Error ? error.message : '알 수 없는 오류',
             },
-            { status: 500 }
+            { status: 500, headers: corsHeaders }
         );
     }
 }
