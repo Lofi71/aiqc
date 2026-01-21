@@ -1,0 +1,5 @@
+figma-plugin
+dist
+node_modules
+.next
+.env*
