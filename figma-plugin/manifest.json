@@ -1,0 +1,21 @@
+{
+    "name": "AIQC - UX Audit",
+    "id": "aiqc-plugin",
+    "api": "1.0.0",
+    "main": "dist/code.js",
+    "ui": "dist/index.html",
+    "capabilities": [],
+    "enableProposedApi": false,
+    "editorType": [
+        "figma"
+    ],
+    "networkAccess": {
+        "allowedDomains": [
+            "https://aiqc-black.vercel.app"
+        ],
+        "devAllowedDomains": [
+            "http://localhost:3000"
+        ],
+        "reasoning": "This plugin needs to access the AIQC API (hosted on Vercel) to send image data for UX analysis and receive feedback results."
+    }
+}
